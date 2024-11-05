@@ -1,6 +1,6 @@
 # Vision One Detections Export Tool
 
-A Python script that retrieves detection events from Trend Micro Vision One API and exports them to CSV format.
+A Python script that retrieves detection events from Trend Micro's Vision One API and exports them to CSV format.
 
 ## Features
 
