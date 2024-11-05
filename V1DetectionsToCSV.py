@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 # =============================================================================
 
 # API Configuration
-API_TOKEN = 'YOUR_API_TOKEN'  # Vision One API token
+API_TOKEN = 'YOUR_API_KEY'  # Vision One API token
 API_ENDPOINT = 'https://api.xdr.trendmicro.com/v3.0/search/detections'
 
 # Search Parameters - Choose ONE of the following options:
@@ -36,8 +36,8 @@ START_DATE = None    # Start date (set to None if using DAYS_TO_SEARCH) Format: 
 END_DATE = None      # End date (set to None if using DAYS_TO_SEARCH) Format: MM-DD-YYYY
 
 # Other Parameters
-MAX_RESULTS = 20000 # Maximum number of results to retrieve (set to None for unlimited, but be cautious as this may return a large number of results)
-RESULTS_PER_PAGE = 5000  # Number of results per API call (max 5000)
+MAX_RESULTS = 5005 # Maximum number of results to retrieve (set to None for unlimited, but be cautious as this may return a large number of results)
+RESULTS_PER_CALL = 5000  # Number of results per API call (max 5000)
 
 # Filter Configuration
 QUERY_FILTER = "productCode:PTP AND act:Block"  # Vision One search query
@@ -49,8 +49,8 @@ def validate_config():
     """Validate configuration parameters before running."""
     if not API_TOKEN or API_TOKEN == 'your_token_here':
         sys.exit("Error: Please configure your API token")
-    if RESULTS_PER_PAGE > 5000:
-        sys.exit("Error: RESULTS_PER_PAGE cannot exceed 5000")
+    if RESULTS_PER_CALL > 5000:
+        sys.exit("Error: RESULTS_PER_CALL cannot exceed 5000")
 
 def validate_date_format(date_str):
     """Validate date string format (MM-DD-YYYY)."""
@@ -125,7 +125,7 @@ def main():
     query_params = {
         'startDateTime': time_range['start'],
         'endDateTime': time_range['end'],
-        'top': RESULTS_PER_PAGE,
+        'top': RESULTS_PER_CALL,
         'mode': 'detection'
     }
 
@@ -142,6 +142,11 @@ def main():
     
     # Fetch data in batches
     while True:
+        # Adjust batch size if next pull would exceed MAX_RESULTS
+        if MAX_RESULTS and (total_fetched + RESULTS_PER_CALL) > MAX_RESULTS:
+            remaining = MAX_RESULTS - total_fetched
+            query_params['top'] = remaining
+
         data = get_detections(query_params, headers)
         items = data.get('items', [])
         batch_size = len(items)
@@ -154,7 +159,7 @@ def main():
         if MAX_RESULTS and total_fetched >= MAX_RESULTS:
             print("Maximum result limit reached")
             break
-        if batch_size < RESULTS_PER_PAGE:
+        if batch_size < query_params['top']:
             break
         
         next_link = data.get('nextLink')

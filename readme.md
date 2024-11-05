@@ -42,7 +42,7 @@ END_DATE = "MM-DD-YYYY"    # End date
 
 # Other Parameters
 MAX_RESULTS = 20000        # Maximum results to retrieve
-RESULTS_PER_PAGE = 5000    # Results per API call
+RESULTS_PER_CALL = 5000    # Results per API call
 QUERY_FILTER = "productCode:PTP AND act:Block"  # Vision One search query
 OUTPUT_FILE = 'detections.csv'  # Output filename
 ```
@@ -51,7 +51,7 @@ Alternatively, you can pass these variables via command-line arguments.
 
 Example:
 ```bash
-python V1DetectionsToCSV.py --api_token YOUR_API_TOKEN --days_to_search 30 --max_results 20000 --results_per_page 5000 --query_filter "productCode:PTP AND act:Block" --output_file detections.csv
+python V1DetectionsToCSV.py --api_token YOUR_API_TOKEN --days_to_search 30 --max_results 20000 --results_per_call 5000 --query_filter "productCode:PTP AND act:Block" --output_file detections.csv
 ```
 
 ## Usage
