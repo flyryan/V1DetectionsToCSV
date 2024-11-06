@@ -29,14 +29,14 @@ API_ENDPOINT = 'https://api.xdr.trendmicro.com/v3.0/search/detections'
 
 # Search Parameters - Choose ONE of the following options:
 # Option 1: Search by number of days
-DAYS_TO_SEARCH = 30  # Number of days of history to search (set to None if using date range)
+DAYS_TO_SEARCH = None  # Number of days of history to search (set to None if using date range)
 
 # Option 2: Search by date range (format: "MM-DD-YYYY" in quotes or None)
-START_DATE = None    # Start date (set to None if using DAYS_TO_SEARCH) Format: MM-DD-YYYY
-END_DATE = None      # End date (set to None if using DAYS_TO_SEARCH) Format: MM-DD-YYYY
+START_DATE = "10-01-2024"    # Start date (set to None if using DAYS_TO_SEARCH) Format: MM-DD-YYYY
+END_DATE = "10-31-2024"      # End date (set to None if using DAYS_TO_SEARCH) Format: MM-DD-YYYY
 
 # Other Parameters
-MAX_RESULTS = 5005 # Maximum number of results to retrieve (set to None for unlimited, but be cautious as this may return a large number of results)
+MAX_RESULTS = 20000 # Maximum number of results to retrieve (set to None for unlimited, but be cautious as this may return a large number of results)
 RESULTS_PER_CALL = 5000  # Number of results per API call (max 5000)
 
 # Filter Configuration
@@ -54,7 +54,7 @@ def validate_config():
 
 def validate_date_format(date_str):
     """Validate date string format (MM-DD-YYYY)."""
-    if is_none_value(date_str):
+    if date_str is None:
         return None
     try:
         return datetime.strptime(date_str, '%m-%d-%Y')
