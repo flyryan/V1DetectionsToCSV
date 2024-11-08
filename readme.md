@@ -133,5 +133,3 @@ The script includes robust error handling for:
 
 - Adjust `num_threads` based on your API rate limits and system capabilities
 - Monitor rate limiting logs to optimize request parameters
-- Consider reducing `results_per_call` if processing large data sets
-- Use the checkpoint file for resumable operations
