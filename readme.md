@@ -116,6 +116,7 @@ The script provides comprehensive logging:
 ```bash
 python V1DetectionsToCSV.py
 ```
+**Note**: When utilizing multithreading, it is crucial to configure the `max_results` parameter to a sufficiently high value to encompass all detection events. Multithreading allows the script to perform concurrent API requests, which can significantly speed up data retrieval. However, if `max_results` is set too low, some detection events may not be captured, leading to gaps in the exported CSV file. To ensure comprehensive coverage and avoid missing any events, adjust the `max_results` value to accommodate the total number of expected detections within your specified time frame. This adjustment is especially important when running multiple threads, as concurrent processing increases the risk of incomplete data retrieval throughout the results (instead of just at the end).
 
 ## Error Handling
 
