@@ -21,7 +21,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
 import yaml
-import concurrent.futures 
+import concurrent.futures
+import numpy as np
 
 # Configure logging
 console_handler = logging.StreamHandler()
@@ -75,7 +76,11 @@ class Config:
             query_filter=os.getenv('QUERY_FILTER'),
             output_file=os.getenv('OUTPUT_FILE', 'detections.csv'),
             checkpoint_file=os.getenv('CHECKPOINT_FILE', 'checkpoint.json'),
-            num_threads=int(os.getenv('NUM_THREADS', 3))
+            num_threads=int(os.getenv('NUM_THREADS', 3)),
+            request_timeout=int(os.getenv('REQUEST_TIMEOUT', 300)),
+            rate_limit_per_second=int(os.getenv('RATE_LIMIT_PER_SECOND', 10)),
+            rate_limit_minute=int(os.getenv('RATE_LIMIT_PER_MINUTE', 600)),
+            rate_limit_hour=int(os.getenv('RATE_LIMIT_PER_HOUR', 15000)),
         )
 
 import time
@@ -174,13 +179,21 @@ class DetectionProcessor:
         self.request_count = 0
         self.counter_lock = threading.Lock()
         self.output_lock = threading.Lock()
-        self.fieldnames = set()  # Track all field names
+        # Predefine fieldnames based on the API documentation
+        self.fieldnames = [
+            'aggregatedCount', 'endpointIp', 'deviceGUID', 'app', 'subRuleId', 'act',
+            'ruleUuid', 'logReceivedTime', 'overSsl', 'rt', 'spt', 'productCode',
+            'category', 'policyId', 'uuid', 'eventTimeDT', 'src', 'cves', 'eventTime',
+            'interestedIp', 'eventSourceType', 'pname', 'rt_utc', 'searchDL', 'severity',
+            'dvchost', 'pver', 'ruleName', 'eventName', 'dst', 'dpt', 'mpname', 'logKey',
+            'filterRiskLevel'  # Include any additional known fields
+        ]
 
-    @staticmethod
-    def flatten_dict(item: Dict[str, Any]) -> Dict[str, Any]:
+    def flatten_dict(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Flatten dictionary and convert lists to strings."""
         flattened = {}
-        for key, value in item.items():
+        for key in self.fieldnames:
+            value = item.get(key, '')
             if value is None:
                 flattened[key] = ''
             elif key in VisionOneAPI.LIST_FIELDS and isinstance(value, list):
@@ -189,62 +202,21 @@ class DetectionProcessor:
                 flattened[key] = value
         return flattened
 
-    def _update_fieldnames(self, items: List[Dict[str, Any]]) -> None:
-        """Update the set of known field names."""
-        for item in items:
-            self.fieldnames.update(item.keys())
-
     def _write_to_csv(self, items: List[Dict[str, Any]]) -> None:
-        """Write detection items to CSV file in order based on 'eventTimeDT'."""
+        """Append detection items to the CSV file without sorting."""
         if not items:
             return
 
-        # Sort incoming items by 'eventTimeDT'
-        items.sort(key=lambda x: x.get('eventTimeDT'))
-
         with self.output_lock:
             file_exists = os.path.exists(self.config.output_file)
-            
-            if file_exists:
-                # Read existing data
-                with open(self.config.output_file, 'r', newline='') as original:
-                    reader = csv.DictReader(original)
-                    existing_rows = list(reader)
-                
-                # Merge existing rows with new items
-                merged_rows = []
-                i, j = 0, 0
-                while i < len(existing_rows) and j < len(items):
-                    existing_time = existing_rows[i].get('eventTimeDT')
-                    new_time = items[j].get('eventTimeDT')
-                    if existing_time <= new_time:
-                        merged_rows.append(existing_rows[i])
-                        i += 1
-                    else:
-                        merged_rows.append(items[j])
-                        j += 1
-                # Append any remaining rows
-                merged_rows.extend(existing_rows[i:])
-                merged_rows.extend(items[j:])
-                
-                # Write merged data to temporary file
-                temp_file = f"{self.config.output_file}.tmp"
-                with open(temp_file, 'w', newline='') as csvfile:
-                    writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames or sorted(merged_rows[0].keys()), extrasaction='ignore')
-                    writer.writeheader()
-                    writer.writerows(merged_rows)
-            else:
-                # Initialize fieldnames
-                self.fieldnames = sorted(items[0].keys())
-                # Write new items to temporary file
-                temp_file = f"{self.config.output_file}.tmp"
-                with open(temp_file, 'w', newline='') as csvfile:
-                    writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames, extrasaction='ignore')
-                    writer.writeheader()
-                    writer.writerows(items)
 
-            # Replace original file with temporary file
-            os.replace(temp_file, self.config.output_file)
+            with open(self.config.output_file, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames, extrasaction='ignore')
+
+                if not file_exists:
+                    writer.writeheader()
+
+                writer.writerows(items)
 
     def debug_data_structure(self, data: Dict[str, Any], label: str = "Data Structure") -> None:
         """Print detailed information about the data structure."""
@@ -304,6 +276,16 @@ class DetectionProcessor:
                 return new_params
         return None
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+
 def main():
     """Main execution function."""
     try:
@@ -330,7 +312,7 @@ def main():
             interval_end = interval_start + timedelta(seconds=interval_seconds)
             if interval_end > end_datetime or i == config.num_threads - 1:
                 interval_end = end_datetime
-            intervals.append((interval_start.isoformat(), interval_end.isoformat()))
+            intervals.append((interval_start.isoformat() + 'Z', interval_end.isoformat() + 'Z'))
 
         # Function to process detections for a given time interval
         def process_interval(interval_start, interval_end):
@@ -351,7 +333,7 @@ def main():
             futures = []
             for i, interval in enumerate(intervals):
                 futures.append(executor.submit(process_interval, interval[0], interval[1]))
-                time.sleep(3)  # Add a 1-second delay between starting threads
+                time.sleep(3)  # Add a 3-second delay between starting threads
             for future in concurrent.futures.as_completed(futures):
                 try:
                     future.result()
