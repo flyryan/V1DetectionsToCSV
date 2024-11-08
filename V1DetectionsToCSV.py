@@ -203,20 +203,43 @@ class DetectionProcessor:
         return flattened
 
     def _write_to_csv(self, items: List[Dict[str, Any]]) -> None:
-        """Append detection items to the CSV file without sorting."""
+        """Insert detection items into the CSV in order based on eventTimeDT with thread safety."""
         if not items:
             return
 
         with self.output_lock:
-            file_exists = os.path.exists(self.config.output_file)
+            # Sort the incoming items by eventTimeDT to maintain order within the batch
+            items.sort(key=lambda x: x.get('eventTimeDT', ''))
 
-            with open(self.config.output_file, 'a', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames, extrasaction='ignore')
-
-                if not file_exists:
+            if not os.path.exists(self.config.output_file):
+                # If file doesn't exist, create it and write header
+                with open(self.config.output_file, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames, extrasaction='ignore')
                     writer.writeheader()
+                    writer.writerows(items)
+                return
 
-                writer.writerows(items)
+            # Create a temporary file for writing
+            temp_file = self.config.output_file + '.tmp'
+            inserted = False
+
+            with open(self.config.output_file, 'r', newline='', encoding='utf-8') as read_file, \
+                 open(temp_file, 'w', newline='', encoding='utf-8') as write_file:
+                reader = csv.DictReader(read_file)
+                writer = csv.DictWriter(write_file, fieldnames=self.fieldnames, extrasaction='ignore')
+                writer.writeheader()
+
+                for row in reader:
+                    if not inserted and items and row['eventTimeDT'] > items[0]['eventTimeDT']:
+                        writer.writerows(items)
+                        inserted = True
+                    writer.writerow(row)
+
+                if not inserted:
+                    writer.writerows(items)
+
+            # Replace the original file with the updated temp file
+            os.replace(temp_file, self.config.output_file)
 
     def debug_data_structure(self, data: Dict[str, Any], label: str = "Data Structure") -> None:
         """Print detailed information about the data structure."""
@@ -246,7 +269,7 @@ class DetectionProcessor:
             logger.info(f"Thread {threading.current_thread().name} - Making API request #{current_request}")
             data = self.api.get_detections(params)
             items = data.get('items', [])
-            
+
             if items:
                 flattened_items = [self.flatten_dict(item) for item in items]
                 self._write_to_csv(flattened_items)
