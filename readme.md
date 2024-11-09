@@ -19,9 +19,9 @@ A Python script that efficiently retrieves detection events from Trend Micro's V
 
 - Python 3.6 or higher
 - Required packages:
-  ```bash
-  pip install requests pyyaml
-  ```
+```bash
+pip install requests pyyaml numpy
+```
 
 ## Configuration
 
